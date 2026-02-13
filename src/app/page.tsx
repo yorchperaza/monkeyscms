@@ -59,7 +59,7 @@ function Navigation() {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <nav className="sticky top-0 z-50 bg-dark-900/80 backdrop-blur-xl border-b border-dark-700/50">
+    <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-dark-700/50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <a href="#" className="flex items-center gap-3">
@@ -75,31 +75,31 @@ function Navigation() {
           <div className="hidden md:flex items-center gap-8">
             <a
               href="#features"
-              className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
+              className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
             >
               Features
             </a>
             <a
               href="#architecture"
-              className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
+              className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
             >
               Architecture
             </a>
             <a
               href="#comparison"
-              className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
+              className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
             >
               Why MonkeysCMS
             </a>
             <a
               href="#ai-playground"
-              className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
+              className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
             >
               Try AI
             </a>
             <a
               href="#community"
-              className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
+              className="text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
             >
               Community
             </a>
@@ -110,7 +110,7 @@ function Navigation() {
               href="https://github.com/MonkeysCloud/MonkeysCMS"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-ghost"
+              className="inline-flex items-center gap-2 px-4 py-2 text-gray-600 font-medium transition-all duration-300 hover:text-monkey-orange"
             >
               <Github className="w-4 h-4" /> GitHub
             </a>
@@ -124,29 +124,29 @@ function Navigation() {
             </a>
           </div>
 
-          <button onClick={() => setIsOpen(!isOpen)} className="md:hidden text-dark-200 p-2">
+          <button onClick={() => setIsOpen(!isOpen)} className="md:hidden text-gray-700 p-2">
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
 
         {isOpen && (
-          <div className="md:hidden mt-4 pb-4 border-t border-dark-700 pt-4 space-y-4">
-            <a href="#features" className="block text-dark-200 hover:text-white transition-colors">
+          <div className="md:hidden mt-4 pb-4 border-t border-gray-200 pt-4 space-y-4">
+            <a href="#features" className="block text-gray-600 hover:text-gray-900 transition-colors">
               Features
             </a>
             <a
               href="#architecture"
-              className="block text-dark-200 hover:text-white transition-colors"
+              className="block text-gray-600 hover:text-gray-900 transition-colors"
             >
               Architecture
             </a>
-            <a href="#comparison" className="block text-dark-200 hover:text-white transition-colors">
+            <a href="#comparison" className="block text-gray-600 hover:text-gray-900 transition-colors">
               Why MonkeysCMS
             </a>
-            <a href="#ai-playground" className="block text-dark-200 hover:text-white transition-colors">
+            <a href="#ai-playground" className="block text-gray-600 hover:text-gray-900 transition-colors">
               Try AI
             </a>
-            <a href="#community" className="block text-dark-200 hover:text-white transition-colors">
+            <a href="#community" className="block text-gray-600 hover:text-gray-900 transition-colors">
               Community
             </a>
             <div className="pt-4 flex flex-col gap-3">
