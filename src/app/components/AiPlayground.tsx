@@ -60,8 +60,8 @@ const LENGTHS = [
 
 const MODELS = [
     { value: 'auto', label: 'Auto', desc: 'Best model for the task', icon: <Bot className="w-4 h-4" /> },
-    { value: 'fast', label: 'Fast', desc: 'Llama-3.3-70B', icon: <Zap className="w-4 h-4" /> },
-    { value: 'reasoning', label: 'Reasoning', desc: 'DeepSeek-R1-70B', icon: <Brain className="w-4 h-4" /> }
+    { value: 'fast', label: 'Fast', desc: 'Optimized for speed', icon: <Zap className="w-4 h-4" /> },
+    { value: 'reasoning', label: 'Reasoning', desc: 'Complex problem solving', icon: <Brain className="w-4 h-4" /> }
 ]
 
 type Action = 'generate' | 'improve' | 'critique'
