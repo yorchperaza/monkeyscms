@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import AiPlayground from './components/AiPlayground'
 import Image from 'next/image'
 import {
   ArrowRight,
@@ -91,6 +92,12 @@ function Navigation() {
               Why MonkeysCMS
             </a>
             <a
+              href="#ai-playground"
+              className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
+            >
+              Try AI
+            </a>
+            <a
               href="#community"
               className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
             >
@@ -135,6 +142,9 @@ function Navigation() {
             </a>
             <a href="#comparison" className="block text-dark-200 hover:text-white transition-colors">
               Why MonkeysCMS
+            </a>
+            <a href="#ai-playground" className="block text-dark-200 hover:text-white transition-colors">
+              Try AI
             </a>
             <a href="#community" className="block text-dark-200 hover:text-white transition-colors">
               Community
@@ -1088,6 +1098,7 @@ export default function Home() {
       <AnnouncementBar />
       <Navigation />
       <HeroSection />
+      <AiPlayground />
       <SocialProofStrip />
       <PainSection />
       <UseCasesSection />
