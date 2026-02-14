@@ -92,14 +92,25 @@ export function useStreamingGeneration() {
             const decoder = new TextDecoder()
             let buffer = ''
 
+            // Strip markdown code fences that models wrap around JSON
+            const stripCodeFences = (s: string): string => {
+                let cleaned = s.trim()
+                // Remove opening ```json or ```
+                cleaned = cleaned.replace(/^```(?:json)?\s*/i, '')
+                // Remove closing ```
+                cleaned = cleaned.replace(/\s*```\s*$/, '')
+                return cleaned.trim()
+            }
+
             // Process a single data value from a `data: xxx` line
             const processDataLine = (data: string) => {
                 // End of stream
                 if (data === '[DONE]') {
-                    // Try to parse accumulated JSON
+                    // Try to parse accumulated JSON (strip code fences first)
                     if (state.accumulated.trim()) {
+                        const cleaned = stripCodeFences(state.accumulated)
                         try {
-                            const parsed = JSON.parse(state.accumulated)
+                            const parsed = JSON.parse(cleaned)
                             setResult(parsed)
                             setPhase('complete')
                         } catch {
@@ -166,16 +177,19 @@ export function useStreamingGeneration() {
                     if (buffer.trim()) {
                         const lines = buffer.split('\n')
                         for (const line of lines) {
-                            const trimmed = line.trim()
-                            if (trimmed.startsWith('data:')) {
-                                processDataLine(trimmed.slice(5).trim())
+                            if (line.startsWith('data:')) {
+                                // SSE spec: strip exactly one leading space after "data:"
+                                const raw = line.slice(5)
+                                const data = raw.startsWith(' ') ? raw.slice(1) : raw
+                                processDataLine(data)
                             }
                         }
                     }
                     // If we never got [DONE], try to parse what we have
                     if (state.accumulated.trim() && !result) {
+                        const cleaned = stripCodeFences(state.accumulated)
                         try {
-                            const parsed = JSON.parse(state.accumulated)
+                            const parsed = JSON.parse(cleaned)
                             setResult(parsed)
                             setPhase('complete')
                         } catch {
@@ -194,11 +208,12 @@ export function useStreamingGeneration() {
                 buffer = lines.pop() || ''
 
                 for (const line of lines) {
-                    const trimmed = line.trim()
-                    if (!trimmed) continue // skip empty lines (SSE separators)
+                    if (!line.trim()) continue // skip empty lines (SSE separators)
 
-                    if (trimmed.startsWith('data:')) {
-                        const data = trimmed.slice(5).trimStart()
+                    if (line.startsWith('data:')) {
+                        // SSE spec: strip exactly one leading space after "data:"
+                        const raw = line.slice(5)
+                        const data = raw.startsWith(' ') ? raw.slice(1) : raw
                         processDataLine(data)
                     }
                 }

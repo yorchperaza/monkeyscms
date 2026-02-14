@@ -184,6 +184,11 @@ function ReasoningPanel({
 
 // ─── Delta Preview ───────────────────────────────────────────────────────────
 
+/**
+ * Tries to parse the accumulated delta as JSON (stripping code fences)
+ * and render a human-friendly preview of the extracted content.
+ * Falls back to raw text while JSON is still incomplete.
+ */
 function DeltaPreview({ delta, isStreaming }: { delta: string; isStreaming: boolean }) {
     const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -194,6 +199,17 @@ function DeltaPreview({ delta, isStreaming }: { delta: string; isStreaming: bool
     }, [delta])
 
     if (!delta) return null
+
+    // Try to parse the accumulated delta as JSON for a nicer preview
+    let parsed: any = null
+    try {
+        let cleaned = delta.trim()
+        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '')
+        cleaned = cleaned.replace(/\s*```\s*$/, '')
+        parsed = JSON.parse(cleaned)
+    } catch {
+        // Still streaming — JSON is incomplete, that's expected
+    }
 
     return (
         <div className="rounded-xl border border-dark-600/50 overflow-hidden">
@@ -211,13 +227,61 @@ function DeltaPreview({ delta, isStreaming }: { delta: string; isStreaming: bool
                 ref={scrollRef}
                 className="px-4 py-3 bg-dark-900/40 max-h-64 overflow-y-auto"
             >
-                <pre className="text-sm text-dark-300 leading-relaxed whitespace-pre-wrap font-mono break-words">
-                    {delta}
-                    {isStreaming && (
-                        <span className="inline-block w-1.5 h-4 ml-0.5 bg-monkey-orange/70 animate-cursor-blink align-middle" />
-                    )}
-                </pre>
+                {parsed ? (
+                    <FormattedPreview data={parsed} isStreaming={isStreaming} />
+                ) : (
+                    <pre className="text-sm text-dark-300 leading-relaxed whitespace-pre-wrap font-mono break-words">
+                        {delta}
+                        {isStreaming && (
+                            <span className="inline-block w-1.5 h-4 ml-0.5 bg-monkey-orange/70 animate-cursor-blink align-middle" />
+                        )}
+                    </pre>
+                )}
             </div>
+        </div>
+    )
+}
+
+/** Renders a human-friendly view of the parsed JSON content */
+function FormattedPreview({ data, isStreaming }: { data: any; isStreaming: boolean }) {
+    return (
+        <div className="space-y-3">
+            {/* Title */}
+            {data.title && (
+                <h3 className="text-base font-semibold text-dark-100">{data.title}</h3>
+            )}
+
+            {/* Meta description */}
+            {data.meta_description && (
+                <p className="text-xs text-dark-400 italic border-l-2 border-monkey-orange/30 pl-3">
+                    {data.meta_description}
+                </p>
+            )}
+
+            {/* Sections */}
+            {data.sections && Array.isArray(data.sections) && data.sections.map((section: any, i: number) => (
+                <div key={i} className="space-y-1">
+                    {section.heading && (
+                        <h4 className="text-sm font-medium text-dark-200">{section.heading}</h4>
+                    )}
+                    {section.content && (
+                        <div
+                            className="text-sm text-dark-300 leading-relaxed prose-sm [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:mb-1 [&_a]:text-monkey-orange [&_strong]:text-dark-200"
+                            dangerouslySetInnerHTML={{ __html: section.content }}
+                        />
+                    )}
+                </div>
+            ))}
+
+            {/* CTA */}
+            {data.cta && (
+                <p className="text-sm text-monkey-orange font-medium">{data.cta}</p>
+            )}
+
+            {/* Streaming cursor */}
+            {isStreaming && (
+                <span className="inline-block w-1.5 h-4 bg-monkey-orange/70 animate-cursor-blink align-middle" />
+            )}
         </div>
     )
 }

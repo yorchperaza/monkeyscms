@@ -422,6 +422,13 @@ export default function AiPlayground() {
         }
     }, [streaming.error, streaming.isStreaming])
 
+    // Safety net: always clear loading when streaming stops
+    useEffect(() => {
+        if (!streaming.isStreaming && streaming.phase === 'complete') {
+            setLoading(false)
+        }
+    }, [streaming.isStreaming, streaming.phase])
+
     // ── API calls ──
 
     async function apiPost(endpoint: string, body: unknown) {
