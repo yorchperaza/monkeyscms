@@ -13,6 +13,38 @@ export interface StreamingState {
     phase: 'connecting' | 'thinking' | 'generating' | 'parsing' | 'complete' | 'error' | null
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Strip markdown code fences that models wrap around JSON.
+ * Handles ```json, ```, leading/trailing whitespace and newlines.
+ */
+function stripCodeFences(s: string): string {
+    let cleaned = s.trim()
+    // Remove opening ```json or ``` (with optional language tag and whitespace)
+    cleaned = cleaned.replace(/^```\w*\s*\n?/i, '')
+    // Remove closing ```
+    cleaned = cleaned.replace(/\n?```\s*$/, '')
+    return cleaned.trim()
+}
+
+/**
+ * Try to extract JSON from accumulated stream content.
+ * Handles code fences, extra whitespace, etc.
+ */
+function tryParseJSON(accumulated: string): any | null {
+    if (!accumulated.trim()) return null
+
+    const cleaned = stripCodeFences(accumulated)
+    if (!cleaned) return null
+
+    try {
+        return JSON.parse(cleaned)
+    } catch {
+        return null
+    }
+}
+
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 /**
@@ -21,11 +53,13 @@ export interface StreamingState {
  *   data: <think>\n\n
  *   data: reasoning tokens…\n\n
  *   data: </think>\n\n
+ *   data: ```json\n\n
  *   data: { json tokens… }\n\n
+ *   data: ```\n\n
  *   data: [DONE]\n\n
  *
  * Reasoning is wrapped in <think>…</think> tags.
- * After </think>, the remaining tokens form the JSON result.
+ * After </think>, the remaining tokens form the JSON result wrapped in code fences.
  * [DONE] signals the stream is finished.
  */
 export function useStreamingGeneration() {
@@ -92,42 +126,25 @@ export function useStreamingGeneration() {
             const decoder = new TextDecoder()
             let buffer = ''
 
-            // Strip markdown code fences that models wrap around JSON
-            const stripCodeFences = (s: string): string => {
-                let cleaned = s.trim()
-                // Remove opening ```json or ```
-                cleaned = cleaned.replace(/^```(?:json)?\s*/i, '')
-                // Remove closing ```
-                cleaned = cleaned.replace(/\s*```\s*$/, '')
-                return cleaned.trim()
-            }
-
             // Process a single data value from a `data: xxx` line
             const processDataLine = (data: string) => {
                 // End of stream
                 if (data === '[DONE]') {
-                    // Try to parse accumulated JSON (strip code fences first)
-                    if (state.accumulated.trim()) {
-                        const cleaned = stripCodeFences(state.accumulated)
-                        try {
-                            const parsed = JSON.parse(cleaned)
-                            setResult(parsed)
-                            setPhase('complete')
-                        } catch {
-                            // JSON might be incomplete — set what we have as delta
-                            setDelta(state.accumulated)
-                            setPhase('complete')
-                        }
+                    const parsed = tryParseJSON(state.accumulated)
+                    if (parsed) {
+                        setResult(parsed)
                     }
+                    setPhase('complete')
                     setIsStreaming(false)
                     return
                 }
+
+                // ── Think tags ──
 
                 // Check for <think> open tag
                 if (data.includes('<think>')) {
                     state.inThink = true
                     setPhase('thinking')
-                    // Remove the tag and keep any remaining content
                     const afterTag = data.replace('<think>', '')
                     if (afterTag) {
                         setReasoning(prev => prev + afterTag)
@@ -140,7 +157,6 @@ export function useStreamingGeneration() {
                     state.inThink = false
                     state.thinkDone = true
                     setPhase('generating')
-                    // Keep any content after the tag
                     const afterTag = data.replace('</think>', '')
                     if (afterTag.trim()) {
                         state.accumulated += afterTag
@@ -149,26 +165,25 @@ export function useStreamingGeneration() {
                     return
                 }
 
-                // Inside thinking
+                // ── Content ──
+
+                // Inside thinking — accumulate reasoning
                 if (state.inThink) {
                     setReasoning(prev => prev + data)
                     return
                 }
 
-                // After thinking — accumulate JSON tokens
+                // After thinking — accumulate content tokens
                 state.accumulated += data
                 setDelta(prev => prev + data)
 
-                // Update phase to generating if not already
-                if (state.thinkDone) {
-                    setPhase(prev => prev === 'generating' ? prev : 'generating')
-                } else {
-                    // No thinking phase — direct content
-                    setPhase(prev => prev === 'generating' ? prev : 'generating')
+                // Set phase to generating if not already
+                if (phase !== 'generating') {
+                    setPhase('generating')
                 }
             }
 
-            // Read loop
+            // ── Read loop ──
             while (true) {
                 const { done, value } = await reader.read()
 
@@ -178,7 +193,6 @@ export function useStreamingGeneration() {
                         const lines = buffer.split('\n')
                         for (const line of lines) {
                             if (line.startsWith('data:')) {
-                                // SSE spec: strip exactly one leading space after "data:"
                                 const raw = line.slice(5)
                                 const data = raw.startsWith(' ') ? raw.slice(1) : raw
                                 processDataLine(data)
@@ -186,16 +200,13 @@ export function useStreamingGeneration() {
                         }
                     }
                     // If we never got [DONE], try to parse what we have
-                    if (state.accumulated.trim() && !result) {
-                        const cleaned = stripCodeFences(state.accumulated)
-                        try {
-                            const parsed = JSON.parse(cleaned)
+                    if (!result) {
+                        const parsed = tryParseJSON(state.accumulated)
+                        if (parsed) {
                             setResult(parsed)
-                            setPhase('complete')
-                        } catch {
-                            // incomplete — leave as delta
                         }
                     }
+                    setPhase('complete')
                     setIsStreaming(false)
                     break
                 }
@@ -204,11 +215,10 @@ export function useStreamingGeneration() {
 
                 // Process complete lines (lines ending with \n)
                 const lines = buffer.split('\n')
-                // Keep the last (potentially incomplete) line in the buffer
                 buffer = lines.pop() || ''
 
                 for (const line of lines) {
-                    if (!line.trim()) continue // skip empty lines (SSE separators)
+                    if (!line.trim()) continue // skip empty SSE separator lines
 
                     if (line.startsWith('data:')) {
                         // SSE spec: strip exactly one leading space after "data:"

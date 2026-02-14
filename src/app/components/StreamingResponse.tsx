@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
     CheckCircle2,
     Loader2,
@@ -182,13 +182,62 @@ function ReasoningPanel({
     )
 }
 
-// ─── Delta Preview ───────────────────────────────────────────────────────────
+// ─── Content Extraction ──────────────────────────────────────────────────────
 
 /**
- * Tries to parse the accumulated delta as JSON (stripping code fences)
- * and render a human-friendly preview of the extracted content.
- * Falls back to raw text while JSON is still incomplete.
+ * Extract readable HTML content from the raw delta stream.
+ * The delta contains code-fenced JSON like:
+ *   ```json\n{"title":"...","sections":[{"heading":"...","content":"<p>HTML here</p>"},...]}
+ *
+ * We extract and concatenate all "content" field values to display
+ * a readable HTML preview, even when the JSON is incomplete mid-stream.
  */
+function extractContentFromDelta(delta: string): {
+    title: string
+    htmlParts: string[]
+} {
+    let title = ''
+    const htmlParts: string[] = []
+
+    // Extract title (from "title":"..." pattern)
+    const titleMatch = delta.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (titleMatch) {
+        title = titleMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n')
+    }
+
+    // Extract all content field values (from "content":"..." patterns)
+    // This regex handles escaped quotes within the content strings
+    const contentRegex = /"content"\s*:\s*"((?:[^"\\]|\\.)*)"/g
+    let match
+    while ((match = contentRegex.exec(delta)) !== null) {
+        const content = match[1]
+            .replace(/\\"/g, '"')
+            .replace(/\\n/g, '\n')
+            .replace(/\\t/g, '\t')
+            .replace(/\\\\/g, '\\')
+        htmlParts.push(content)
+    }
+
+    // If we have a partial content field still being streamed,
+    // try to capture it too (last "content":" without closing ")
+    const partialContentMatch = delta.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)$/)
+    if (partialContentMatch) {
+        // Check it's not already captured by the complete regex above
+        const partialContent = partialContentMatch[1]
+            .replace(/\\"/g, '"')
+            .replace(/\\n/g, '\n')
+            .replace(/\\t/g, '\t')
+            .replace(/\\\\/g, '\\')
+        if (!htmlParts.includes(partialContent) && partialContent.length > 10) {
+            htmlParts.push(partialContent)
+        }
+    }
+
+    return { title, htmlParts }
+}
+
+// ─── Delta Preview ───────────────────────────────────────────────────────────
+
 function DeltaPreview({ delta, isStreaming }: { delta: string; isStreaming: boolean }) {
     const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -198,18 +247,11 @@ function DeltaPreview({ delta, isStreaming }: { delta: string; isStreaming: bool
         }
     }, [delta])
 
-    if (!delta) return null
+    // Extract readable content from the raw delta
+    const extracted = useMemo(() => extractContentFromDelta(delta), [delta])
+    const hasContent = extracted.title || extracted.htmlParts.length > 0
 
-    // Try to parse the accumulated delta as JSON for a nicer preview
-    let parsed: any = null
-    try {
-        let cleaned = delta.trim()
-        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '')
-        cleaned = cleaned.replace(/\s*```\s*$/, '')
-        parsed = JSON.parse(cleaned)
-    } catch {
-        // Still streaming — JSON is incomplete, that's expected
-    }
+    if (!delta) return null
 
     return (
         <div className="rounded-xl border border-dark-600/50 overflow-hidden">
@@ -227,61 +269,39 @@ function DeltaPreview({ delta, isStreaming }: { delta: string; isStreaming: bool
                 ref={scrollRef}
                 className="px-4 py-3 bg-dark-900/40 max-h-64 overflow-y-auto"
             >
-                {parsed ? (
-                    <FormattedPreview data={parsed} isStreaming={isStreaming} />
+                {hasContent ? (
+                    <div className="space-y-3">
+                        {/* Title */}
+                        {extracted.title && (
+                            <h3 className="text-base font-semibold text-dark-100">
+                                {extracted.title}
+                            </h3>
+                        )}
+
+                        {/* Rendered HTML content sections */}
+                        {extracted.htmlParts.map((html, i) => (
+                            <div
+                                key={i}
+                                className="text-sm text-dark-300 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:mb-1 [&_a]:text-monkey-orange [&_strong]:text-dark-200 [&_h2]:text-dark-100 [&_h2]:font-semibold [&_h2]:text-base [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-dark-200 [&_h3]:font-medium [&_h3]:mt-2"
+                                dangerouslySetInnerHTML={{ __html: html }}
+                            />
+                        ))}
+
+                        {/* Streaming cursor */}
+                        {isStreaming && (
+                            <span className="inline-block w-1.5 h-4 bg-monkey-orange/70 animate-cursor-blink align-middle" />
+                        )}
+                    </div>
                 ) : (
+                    /* Fallback: raw text when nothing extractable yet */
                     <pre className="text-sm text-dark-300 leading-relaxed whitespace-pre-wrap font-mono break-words">
-                        {delta}
+                        {delta.length > 200 ? '…' + delta.slice(-200) : delta}
                         {isStreaming && (
                             <span className="inline-block w-1.5 h-4 ml-0.5 bg-monkey-orange/70 animate-cursor-blink align-middle" />
                         )}
                     </pre>
                 )}
             </div>
-        </div>
-    )
-}
-
-/** Renders a human-friendly view of the parsed JSON content */
-function FormattedPreview({ data, isStreaming }: { data: any; isStreaming: boolean }) {
-    return (
-        <div className="space-y-3">
-            {/* Title */}
-            {data.title && (
-                <h3 className="text-base font-semibold text-dark-100">{data.title}</h3>
-            )}
-
-            {/* Meta description */}
-            {data.meta_description && (
-                <p className="text-xs text-dark-400 italic border-l-2 border-monkey-orange/30 pl-3">
-                    {data.meta_description}
-                </p>
-            )}
-
-            {/* Sections */}
-            {data.sections && Array.isArray(data.sections) && data.sections.map((section: any, i: number) => (
-                <div key={i} className="space-y-1">
-                    {section.heading && (
-                        <h4 className="text-sm font-medium text-dark-200">{section.heading}</h4>
-                    )}
-                    {section.content && (
-                        <div
-                            className="text-sm text-dark-300 leading-relaxed prose-sm [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:mb-1 [&_a]:text-monkey-orange [&_strong]:text-dark-200"
-                            dangerouslySetInnerHTML={{ __html: section.content }}
-                        />
-                    )}
-                </div>
-            ))}
-
-            {/* CTA */}
-            {data.cta && (
-                <p className="text-sm text-monkey-orange font-medium">{data.cta}</p>
-            )}
-
-            {/* Streaming cursor */}
-            {isStreaming && (
-                <span className="inline-block w-1.5 h-4 bg-monkey-orange/70 animate-cursor-blink align-middle" />
-            )}
         </div>
     )
 }

@@ -404,30 +404,60 @@ export default function AiPlayground() {
     // Streaming hook
     const streaming = useStreamingGeneration()
 
-    // When stream completes, populate the result
+    // When streaming completes, synchronize with component state
     useEffect(() => {
-        if (streaming.result && !streaming.isStreaming) {
-            setResult(streaming.result)
-            // Determine result type based on current action
-            setResultType(action === 'generate' ? 'generate' : 'improve')
-            setLoading(false)
-        }
-    }, [streaming.result, streaming.isStreaming, action])
+        if (streaming.isStreaming) return // Still streaming — nothing to do
 
-    // When stream errors, populate error state
-    useEffect(() => {
-        if (streaming.error && !streaming.isStreaming) {
-            setError(streaming.error)
+        if (streaming.phase === 'complete' || streaming.phase === 'error') {
+            // Always clear loading
             setLoading(false)
-        }
-    }, [streaming.error, streaming.isStreaming])
 
-    // Safety net: always clear loading when streaming stops
-    useEffect(() => {
-        if (!streaming.isStreaming && streaming.phase === 'complete') {
-            setLoading(false)
+            // If we have a parsed result, use it
+            if (streaming.result) {
+                setResult(streaming.result)
+                setResultType(action === 'generate' ? 'generate' : 'improve')
+                return
+            }
+
+            // If we have an error, set it
+            if (streaming.error) {
+                setError(streaming.error)
+                return
+            }
+
+            // If no result but we have delta content (JSON parse failed),
+            // try to construct a result from the raw content
+            if (streaming.delta && streaming.phase === 'complete') {
+                // Try one more time to parse — strip code fences aggressively
+                let cleaned = streaming.delta.trim()
+                cleaned = cleaned.replace(/^```\w*\s*\n?/i, '')
+                cleaned = cleaned.replace(/\n?```\s*$/, '')
+                cleaned = cleaned.trim()
+                try {
+                    const parsed = JSON.parse(cleaned)
+                    setResult(parsed)
+                    setResultType(action === 'generate' ? 'generate' : 'improve')
+                } catch {
+                    // Last resort: extract HTML content from the delta and show it
+                    const contentRegex = /"content"\s*:\s*"((?:[^"\\]|\\.)*)"/g
+                    const parts: string[] = []
+                    let m
+                    while ((m = contentRegex.exec(streaming.delta)) !== null) {
+                        parts.push(m[1].replace(/\\"/g, '"').replace(/\\n/g, '\n'))
+                    }
+                    if (parts.length > 0) {
+                        // Build a minimal result object from extracted content
+                        const titleMatch = streaming.delta.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                        setResult({
+                            title: titleMatch ? titleMatch[1].replace(/\\"/g, '"') : 'Generated Content',
+                            sections: [{ heading: '', content: parts.join('') }],
+                        })
+                        setResultType(action === 'generate' ? 'generate' : 'improve')
+                    }
+                }
+            }
         }
-    }, [streaming.isStreaming, streaming.phase])
+    }, [streaming.isStreaming, streaming.phase, streaming.result, streaming.error, streaming.delta, action])
 
     // ── API calls ──
 
