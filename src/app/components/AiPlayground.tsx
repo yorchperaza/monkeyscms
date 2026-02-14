@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
     Sparkles,
     Wand2,
@@ -20,6 +20,8 @@ import {
     Brain,
     Bot
 } from 'lucide-react'
+import { useStreamingGeneration } from '../hooks/useStreamingGeneration'
+import StreamingResponse from './StreamingResponse'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -399,6 +401,27 @@ export default function AiPlayground() {
     // For refine flow
     const [critiqueData, setCritiqueData] = useState<any>(null)
 
+    // Streaming hook
+    const streaming = useStreamingGeneration()
+
+    // When stream completes, populate the result
+    useEffect(() => {
+        if (streaming.result && !streaming.isStreaming) {
+            setResult(streaming.result)
+            // Determine result type based on current action
+            setResultType(action === 'generate' ? 'generate' : 'improve')
+            setLoading(false)
+        }
+    }, [streaming.result, streaming.isStreaming, action])
+
+    // When stream errors, populate error state
+    useEffect(() => {
+        if (streaming.error && !streaming.isStreaming) {
+            setError(streaming.error)
+            setLoading(false)
+        }
+    }, [streaming.error, streaming.isStreaming])
+
     // ── API calls ──
 
     async function apiPost(endpoint: string, body: unknown) {
@@ -421,6 +444,7 @@ export default function AiPlayground() {
         setResult(null)
         setResultType(null)
         setCritiqueData(null)
+        streaming.reset()
 
         try {
             if (action === 'generate') {
@@ -438,16 +462,15 @@ export default function AiPlayground() {
                             include_cta: includeCta,
                             use_rag: useRag,
                             language,
-                            stream: false
+                            stream: true
                         }
                     }
                 }
                 if (kw.length > 0) body.generate_params.options.keywords = kw
                 if (customInstructions.trim()) body.generate_params.options.custom_instructions = customInstructions
 
-                const data = await apiPost('/v1/unified', body)
-                setResult(data)
-                setResultType('generate')
+                // Use streaming — result is populated via useEffect
+                streaming.startStream(`${API_BASE}/v1/unified`, body)
             } else if (action === 'improve') {
                 const body: any = {
                     action: 'improve',
@@ -461,15 +484,14 @@ export default function AiPlayground() {
                             preserve_links: preserveLinks,
                             use_rag: useRag,
                             language,
-                            stream: false
+                            stream: true
                         }
                     }
                 }
                 if (customInstructions.trim()) body.improve_params.options.custom_instructions = customInstructions
 
-                const data = await apiPost('/v1/unified', body)
-                setResult(data)
-                setResultType('improve')
+                // Use streaming — result is populated via useEffect
+                streaming.startStream(`${API_BASE}/v1/unified`, body)
             } else if (action === 'critique') {
                 const body = {
                     content: input,
@@ -479,10 +501,10 @@ export default function AiPlayground() {
                 setResult(data)
                 setResultType('critique')
                 setCritiqueData({ content: input, critique: data.critique, guidelines: guidelines || 'General quality check' })
+                setLoading(false)
             }
         } catch (err: any) {
             setError(err.message || 'Something went wrong')
-        } finally {
             setLoading(false)
         }
     }
@@ -512,6 +534,7 @@ export default function AiPlayground() {
         setResultType(null)
         setError(null)
         setCritiqueData(null)
+        streaming.reset()
     }
 
     // ── Placeholders ──
@@ -723,13 +746,13 @@ export default function AiPlayground() {
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={handleSubmit}
-                                disabled={loading || !input.trim()}
+                                disabled={loading || streaming.isStreaming || !input.trim()}
                                 className="inline-flex items-center gap-2 px-6 py-3 bg-monkey-orange text-dark-900 font-semibold rounded-xl transition-all duration-300 hover:bg-monkey-orange-light hover:scale-105 hover:shadow-lg hover:shadow-monkey-orange/25 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
                             >
-                                {loading ? (
+                                {loading || streaming.isStreaming ? (
                                     <>
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                        Processing…
+                                        {streaming.isStreaming ? 'Streaming…' : 'Processing…'}
                                     </>
                                 ) : (
                                     <>
@@ -738,9 +761,9 @@ export default function AiPlayground() {
                                     </>
                                 )}
                             </button>
-                            {result && (
+                            {(result || streaming.isStreaming) && (
                                 <button
-                                    onClick={handleReset}
+                                    onClick={() => { streaming.cancelStream(); handleReset() }}
                                     className="inline-flex items-center gap-2 px-4 py-2.5 text-dark-400 hover:text-dark-200 transition-colors text-sm"
                                 >
                                     <RotateCcw className="w-4 h-4" />
@@ -761,6 +784,18 @@ export default function AiPlayground() {
                         </div>
                     )}
 
+                    {/* ── Streaming UI ── */}
+                    {(streaming.isStreaming || (streaming.progress.length > 0 && !result)) && (
+                        <StreamingResponse
+                            progress={streaming.progress}
+                            reasoning={streaming.reasoning}
+                            delta={streaming.delta}
+                            error={streaming.error}
+                            isStreaming={streaming.isStreaming}
+                            onCancel={() => { streaming.cancelStream(); handleReset() }}
+                        />
+                    )}
+
                     {/* ── Response ── */}
                     {result && (
                         <div className="mx-5 sm:mx-6 mb-5 p-5 sm:p-6 rounded-xl bg-dark-900/40 border border-dark-700/30">
@@ -776,12 +811,12 @@ export default function AiPlayground() {
                         </div>
                     )}
 
-                    {/* ── Loading overlay ── */}
-                    {loading && (
+                    {/* ── Loading overlay (critique/refine only) ── */}
+                    {loading && !streaming.isStreaming && (
                         <div className="mx-5 sm:mx-6 mb-5 p-8 rounded-xl bg-dark-900/40 border border-dark-700/30 flex flex-col items-center gap-3">
                             <Loader2 className="w-8 h-8 text-monkey-orange animate-spin" />
                             <p className="text-dark-300 text-sm">
-                                {action === 'generate' ? 'Generating content…' : action === 'improve' ? 'Improving content…' : resultType === 'critique' ? 'Refining content…' : 'Analyzing content…'}
+                                {action === 'critique' || resultType === 'critique' ? 'Analyzing content…' : 'Refining content…'}
                             </p>
                             <p className="text-dark-500 text-xs">This may take 10–30 seconds depending on complexity</p>
                         </div>
