@@ -8,63 +8,54 @@ import {
     ChevronUp,
     Brain,
     Eye,
-    Sparkles,
-    Database,
-    Cpu,
-    FileCheck,
     XCircle,
     StopCircle,
+    Wifi,
+    Cpu,
+    Sparkles,
 } from 'lucide-react'
-import type { ProgressEvent } from '../hooks/useStreamingGeneration'
+import type { StreamingState } from '../hooks/useStreamingGeneration'
 
-// ─── Phase config ────────────────────────────────────────────────────────────
+// ─── Phase Stepper ───────────────────────────────────────────────────────────
 
 interface PhaseConfig {
     label: string
     icon: React.ReactNode
+    key: string
 }
 
-const PHASE_MAP: Record<string, PhaseConfig> = {
-    rag_retrieval: { label: 'Retrieving Context', icon: <Database className="w-4 h-4" /> },
-    generating: { label: 'Generating Content', icon: <Cpu className="w-4 h-4" /> },
-    parsing: { label: 'Parsing Response', icon: <FileCheck className="w-4 h-4" /> },
+const PHASES: PhaseConfig[] = [
+    { key: 'connecting', label: 'Connecting', icon: <Wifi className="w-4 h-4" /> },
+    { key: 'thinking', label: 'Thinking', icon: <Brain className="w-4 h-4" /> },
+    { key: 'generating', label: 'Generating', icon: <Cpu className="w-4 h-4" /> },
+    { key: 'complete', label: 'Complete', icon: <Sparkles className="w-4 h-4" /> },
+]
+
+function getPhaseIndex(phase: string | null): number {
+    if (!phase) return -1
+    const idx = PHASES.findIndex(p => p.key === phase)
+    return idx === -1 ? -1 : idx
 }
 
-const PHASE_ORDER = ['rag_retrieval', 'generating', 'parsing']
-
-function getPhaseIndex(phase: string): number {
-    const idx = PHASE_ORDER.indexOf(phase)
-    return idx === -1 ? PHASE_ORDER.length : idx
-}
-
-// ─── Progress Stepper ────────────────────────────────────────────────────────
-
-function ProgressStepper({
-    progress,
-    isComplete,
+function PhaseStepper({
+    phase,
     hasError,
 }: {
-    progress: ProgressEvent[]
-    isComplete: boolean
+    phase: StreamingState['phase']
     hasError: boolean
 }) {
-    // Determine which phases have been seen
-    const seenPhases = new Set(progress.map(p => p.phase))
-    const currentPhase = progress.length > 0 ? progress[progress.length - 1].phase : null
-    const currentPhaseIndex = currentPhase ? getPhaseIndex(currentPhase) : -1
+    const currentIdx = getPhaseIndex(phase)
 
     return (
         <div className="flex items-center gap-0 w-full">
-            {PHASE_ORDER.map((phase, i) => {
-                const config = PHASE_MAP[phase]
-                const isSeen = seenPhases.has(phase)
-                const isCurrent = phase === currentPhase && !isComplete
-                const isCompleted = isComplete || (isSeen && currentPhaseIndex > i)
-                const isFailed = hasError && isCurrent
+            {PHASES.map((p, i) => {
+                const isCompleted = currentIdx > i
+                const isCurrent = currentIdx === i && !hasError
+                const isFailed = hasError && currentIdx === i
 
                 return (
-                    <div key={phase} className="flex items-center flex-1 last:flex-initial">
-                        {/* Step */}
+                    <div key={p.key} className="flex items-center flex-1 last:flex-initial">
+                        {/* Step circle */}
                         <div className="flex flex-col items-center gap-1.5">
                             <div
                                 className={`
@@ -86,7 +77,7 @@ function ProgressStepper({
                                 ) : isCurrent ? (
                                     <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : (
-                                    config.icon
+                                    p.icon
                                 )}
                             </div>
                             <span
@@ -99,15 +90,15 @@ function ProgressStepper({
                                             : 'text-dark-500'
                                     }`}
                             >
-                                {config.label}
+                                {p.label}
                             </span>
                         </div>
 
                         {/* Connector line */}
-                        {i < PHASE_ORDER.length - 1 && (
+                        {i < PHASES.length - 1 && (
                             <div className="flex-1 mx-2 mb-5">
                                 <div
-                                    className={`h-0.5 rounded-full transition-all duration-700 ${isCompleted || (isSeen && currentPhaseIndex > i)
+                                    className={`h-0.5 rounded-full transition-all duration-700 ${isCompleted
                                         ? 'bg-green-500/40'
                                         : isCurrent
                                             ? 'bg-gradient-to-r from-monkey-orange/40 to-dark-600/30'
@@ -127,10 +118,10 @@ function ProgressStepper({
 
 function ReasoningPanel({
     reasoning,
-    isStreaming,
+    isThinking,
 }: {
     reasoning: string
-    isStreaming: boolean
+    isThinking: boolean
 }) {
     const [isOpen, setIsOpen] = useState(true)
     const scrollRef = useRef<HTMLDivElement>(null)
@@ -142,13 +133,13 @@ function ReasoningPanel({
         }
     }, [reasoning, isOpen])
 
-    // Auto-collapse when streaming finishes
+    // Auto-collapse once thinking finishes
     useEffect(() => {
-        if (!isStreaming && reasoning) {
+        if (!isThinking && reasoning) {
             const timer = setTimeout(() => setIsOpen(false), 1500)
             return () => clearTimeout(timer)
         }
-    }, [isStreaming, reasoning])
+    }, [isThinking, reasoning])
 
     if (!reasoning) return null
 
@@ -161,7 +152,7 @@ function ReasoningPanel({
                 <Brain className="w-4 h-4 text-purple-400" />
                 <span className="text-sm font-medium text-dark-200 flex-1">
                     AI Reasoning
-                    {isStreaming && (
+                    {isThinking && (
                         <span className="ml-2 text-xs text-purple-400 font-normal">
                             thinking…
                         </span>
@@ -181,7 +172,7 @@ function ReasoningPanel({
                 >
                     <p className="text-sm text-dark-400 leading-relaxed whitespace-pre-wrap font-mono">
                         {reasoning}
-                        {isStreaming && (
+                        {isThinking && (
                             <span className="inline-block w-1.5 h-4 ml-0.5 bg-purple-400 animate-cursor-blink align-middle" />
                         )}
                     </p>
@@ -231,56 +222,33 @@ function DeltaPreview({ delta, isStreaming }: { delta: string; isStreaming: bool
     )
 }
 
-// ─── Latest Progress Message ─────────────────────────────────────────────────
-
-function ProgressMessage({ progress }: { progress: ProgressEvent[] }) {
-    const latest = progress.length > 0 ? progress[progress.length - 1] : null
-    if (!latest) return null
-
-    return (
-        <div className="flex items-center gap-2 text-sm text-dark-400">
-            <Sparkles className="w-3.5 h-3.5 text-monkey-orange animate-pulse" />
-            <span>{latest.message}</span>
-        </div>
-    )
-}
-
 // ─── Main StreamingResponse Component ────────────────────────────────────────
 
 export default function StreamingResponse({
-    progress,
     reasoning,
     delta,
     error,
     isStreaming,
+    phase,
     onCancel,
 }: {
-    progress: ProgressEvent[]
     reasoning: string
     delta: string
     error: string | null
     isStreaming: boolean
+    phase: StreamingState['phase']
     onCancel: () => void
 }) {
-    const isComplete = !isStreaming && !error && progress.length > 0
-
     return (
         <div className="mx-5 sm:mx-6 mb-5 p-5 sm:p-6 rounded-xl bg-dark-900/40 border border-dark-700/30 space-y-5 animate-slide-up">
-            {/* Progress Stepper */}
-            <ProgressStepper
-                progress={progress}
-                isComplete={isComplete}
-                hasError={!!error}
-            />
-
-            {/* Current progress message */}
-            {isStreaming && <ProgressMessage progress={progress} />}
+            {/* Phase Stepper */}
+            <PhaseStepper phase={phase} hasError={!!error} />
 
             {/* Reasoning panel */}
-            <ReasoningPanel reasoning={reasoning} isStreaming={isStreaming} />
+            <ReasoningPanel reasoning={reasoning} isThinking={phase === 'thinking'} />
 
             {/* Live delta preview */}
-            <DeltaPreview delta={delta} isStreaming={isStreaming} />
+            <DeltaPreview delta={delta} isStreaming={isStreaming && phase === 'generating'} />
 
             {/* Error display */}
             {error && (

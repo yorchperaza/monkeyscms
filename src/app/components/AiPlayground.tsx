@@ -451,7 +451,7 @@ export default function AiPlayground() {
                 const kw = keywords.split(',').map(k => k.trim()).filter(Boolean)
                 const body: any = {
                     action: 'generate',
-                    model_selection: model,
+                    model: model,
                     generate_params: {
                         brief: input,
                         content_type: contentType,
@@ -474,7 +474,7 @@ export default function AiPlayground() {
             } else if (action === 'improve') {
                 const body: any = {
                     action: 'improve',
-                    model_selection: model,
+                    model: model,
                     improve_params: {
                         content: input,
                         task: taskType,
@@ -785,13 +785,13 @@ export default function AiPlayground() {
                     )}
 
                     {/* ── Streaming UI ── */}
-                    {(streaming.isStreaming || (streaming.progress.length > 0 && !result)) && (
+                    {(streaming.isStreaming || (streaming.phase && streaming.phase !== 'complete' && !result)) && (
                         <StreamingResponse
-                            progress={streaming.progress}
                             reasoning={streaming.reasoning}
                             delta={streaming.delta}
                             error={streaming.error}
                             isStreaming={streaming.isStreaming}
+                            phase={streaming.phase}
                             onCancel={() => { streaming.cancelStream(); handleReset() }}
                         />
                     )}

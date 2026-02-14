@@ -4,44 +4,55 @@ import { useState, useRef, useCallback } from 'react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface ProgressEvent {
-    phase: string
-    message: string
-}
-
 export interface StreamingState {
-    progress: ProgressEvent[]
     reasoning: string
     delta: string
     result: any | null
     error: string | null
     isStreaming: boolean
-}
-
-interface SSEFrame {
-    event: string
-    data: string
+    phase: 'connecting' | 'thinking' | 'generating' | 'parsing' | 'complete' | 'error' | null
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
+/**
+ * Streams from the MonkeysAI API which returns raw SSE `data:` lines:
+ *
+ *   data: <think>\n\n
+ *   data: reasoning tokens…\n\n
+ *   data: </think>\n\n
+ *   data: { json tokens… }\n\n
+ *   data: [DONE]\n\n
+ *
+ * Reasoning is wrapped in <think>…</think> tags.
+ * After </think>, the remaining tokens form the JSON result.
+ * [DONE] signals the stream is finished.
+ */
 export function useStreamingGeneration() {
-    const [progress, setProgress] = useState<ProgressEvent[]>([])
     const [reasoning, setReasoning] = useState('')
     const [delta, setDelta] = useState('')
     const [result, setResult] = useState<any | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [isStreaming, setIsStreaming] = useState(false)
+    const [phase, setPhase] = useState<StreamingState['phase']>(null)
 
     const abortRef = useRef<AbortController | null>(null)
 
+    // Track state outside of React batching for the parsing logic
+    const stateRef = useRef({
+        inThink: false,
+        thinkDone: false,
+        accumulated: '',
+    })
+
     const reset = useCallback(() => {
-        setProgress([])
         setReasoning('')
         setDelta('')
         setResult(null)
         setError(null)
         setIsStreaming(false)
+        setPhase(null)
+        stateRef.current = { inThink: false, thinkDone: false, accumulated: '' }
     }, [])
 
     const cancelStream = useCallback(() => {
@@ -54,9 +65,11 @@ export function useStreamingGeneration() {
         // Reset previous state
         reset()
         setIsStreaming(true)
+        setPhase('connecting')
 
         const controller = new AbortController()
         abortRef.current = controller
+        const state = stateRef.current
 
         try {
             const response = await fetch(url, {
@@ -79,74 +92,68 @@ export function useStreamingGeneration() {
             const decoder = new TextDecoder()
             let buffer = ''
 
-            // Parse SSE frames from buffer
-            const parseFrames = (raw: string): { frames: SSEFrame[]; remainder: string } => {
-                const frames: SSEFrame[] = []
-                // SSE frames are separated by double newlines
-                const parts = raw.split('\n\n')
-                // Last part might be incomplete
-                const remainder = parts.pop() || ''
-
-                for (const part of parts) {
-                    const trimmed = part.trim()
-                    if (!trimmed) continue
-
-                    let event = 'message'
-                    let data = ''
-
-                    for (const line of trimmed.split('\n')) {
-                        if (line.startsWith('event:')) {
-                            event = line.slice(6).trim()
-                        } else if (line.startsWith('data:')) {
-                            data = line.slice(5).trim()
+            // Process a single data value from a `data: xxx` line
+            const processDataLine = (data: string) => {
+                // End of stream
+                if (data === '[DONE]') {
+                    // Try to parse accumulated JSON
+                    if (state.accumulated.trim()) {
+                        try {
+                            const parsed = JSON.parse(state.accumulated)
+                            setResult(parsed)
+                            setPhase('complete')
+                        } catch {
+                            // JSON might be incomplete — set what we have as delta
+                            setDelta(state.accumulated)
+                            setPhase('complete')
                         }
                     }
-
-                    if (data) {
-                        frames.push({ event, data })
-                    }
+                    setIsStreaming(false)
+                    return
                 }
 
-                return { frames, remainder }
-            }
-
-            // Process a single SSE frame
-            const processFrame = (frame: SSEFrame) => {
-                try {
-                    const parsed = JSON.parse(frame.data)
-
-                    switch (frame.event) {
-                        case 'progress':
-                            setProgress(prev => [...prev, {
-                                phase: parsed.phase,
-                                message: parsed.message,
-                            }])
-                            break
-
-                        case 'reasoning':
-                            setReasoning(prev => prev + (parsed.content || ''))
-                            break
-
-                        case 'delta':
-                            setDelta(prev => prev + (parsed.content || ''))
-                            break
-
-                        case 'complete':
-                            setResult(parsed)
-                            setIsStreaming(false)
-                            break
-
-                        case 'error':
-                            setError(parsed.message || parsed.error || 'Stream error')
-                            setIsStreaming(false)
-                            break
-
-                        default:
-                            // Unknown event type — ignore
-                            break
+                // Check for <think> open tag
+                if (data.includes('<think>')) {
+                    state.inThink = true
+                    setPhase('thinking')
+                    // Remove the tag and keep any remaining content
+                    const afterTag = data.replace('<think>', '')
+                    if (afterTag) {
+                        setReasoning(prev => prev + afterTag)
                     }
-                } catch {
-                    // Non-JSON data line — ignore
+                    return
+                }
+
+                // Check for </think> close tag
+                if (data.includes('</think>')) {
+                    state.inThink = false
+                    state.thinkDone = true
+                    setPhase('generating')
+                    // Keep any content after the tag
+                    const afterTag = data.replace('</think>', '')
+                    if (afterTag.trim()) {
+                        state.accumulated += afterTag
+                        setDelta(prev => prev + afterTag)
+                    }
+                    return
+                }
+
+                // Inside thinking
+                if (state.inThink) {
+                    setReasoning(prev => prev + data)
+                    return
+                }
+
+                // After thinking — accumulate JSON tokens
+                state.accumulated += data
+                setDelta(prev => prev + data)
+
+                // Update phase to generating if not already
+                if (state.thinkDone) {
+                    setPhase(prev => prev === 'generating' ? prev : 'generating')
+                } else {
+                    // No thinking phase — direct content
+                    setPhase(prev => prev === 'generating' ? prev : 'generating')
                 }
             }
 
@@ -157,25 +164,52 @@ export function useStreamingGeneration() {
                 if (done) {
                     // Process any remaining buffer
                     if (buffer.trim()) {
-                        const { frames } = parseFrames(buffer + '\n\n')
-                        frames.forEach(processFrame)
+                        const lines = buffer.split('\n')
+                        for (const line of lines) {
+                            const trimmed = line.trim()
+                            if (trimmed.startsWith('data:')) {
+                                processDataLine(trimmed.slice(5).trim())
+                            }
+                        }
+                    }
+                    // If we never got [DONE], try to parse what we have
+                    if (state.accumulated.trim() && !result) {
+                        try {
+                            const parsed = JSON.parse(state.accumulated)
+                            setResult(parsed)
+                            setPhase('complete')
+                        } catch {
+                            // incomplete — leave as delta
+                        }
                     }
                     setIsStreaming(false)
                     break
                 }
 
                 buffer += decoder.decode(value, { stream: true })
-                const { frames, remainder } = parseFrames(buffer)
-                buffer = remainder
-                frames.forEach(processFrame)
+
+                // Process complete lines (lines ending with \n)
+                const lines = buffer.split('\n')
+                // Keep the last (potentially incomplete) line in the buffer
+                buffer = lines.pop() || ''
+
+                for (const line of lines) {
+                    const trimmed = line.trim()
+                    if (!trimmed) continue // skip empty lines (SSE separators)
+
+                    if (trimmed.startsWith('data:')) {
+                        const data = trimmed.slice(5).trimStart()
+                        processDataLine(data)
+                    }
+                }
             }
         } catch (err: any) {
             if (err.name === 'AbortError') {
-                // User cancelled — not an error
                 setIsStreaming(false)
                 return
             }
             setError(err.message || 'Something went wrong')
+            setPhase('error')
             setIsStreaming(false)
         } finally {
             abortRef.current = null
@@ -184,12 +218,12 @@ export function useStreamingGeneration() {
 
     return {
         // State
-        progress,
         reasoning,
         delta,
         result,
         error,
         isStreaming,
+        phase,
         // Actions
         startStream,
         cancelStream,
