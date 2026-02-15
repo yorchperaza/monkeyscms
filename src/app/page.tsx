@@ -1000,6 +1000,12 @@ function Footer() {
             >
               Community
             </a>
+            <a
+              href="/privacy"
+              className="text-dark-400 hover:text-white transition-colors"
+            >
+              Privacy Policy
+            </a>
           </div>
 
           <p className="text-dark-500 text-sm">© MonkeysCMS — Structure without complexity.</p>
