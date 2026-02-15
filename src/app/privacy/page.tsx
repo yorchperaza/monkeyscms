@@ -174,8 +174,10 @@ export default function PrivacyPolicyPage() {
                             Our website includes an{' '}
                             <strong className="text-white">AI Playground</strong> feature
                             that lets you generate sample CMS content structures. This
-                            feature is powered by the{' '}
-                            <strong className="text-white">Google Gemini API</strong>.
+                            feature is powered by{' '}
+                            <strong className="text-white">self-hosted AI models</strong>,
+                            including DeepSeek and Llama 3.1, running on our own
+                            infrastructure.
                         </p>
 
                         <h3 className="font-display text-lg font-semibold text-white mb-3">
@@ -183,30 +185,22 @@ export default function PrivacyPolicyPage() {
                         </h3>
                         <ul className="list-disc list-inside space-y-2 text-dark-300 mb-4">
                             <li>
-                                When you use the AI Playground, the text you enter is sent to
-                                Google&apos;s Gemini API to generate a response.
+                                When you use the AI Playground, the text you enter is
+                                processed by our self-hosted AI models. No third-party AI
+                                services are involved.
                             </li>
                             <li>
                                 We do <strong className="text-white">not</strong> store,
-                                log, or retain any inputs or outputs from the AI Playground on
-                                our servers.
+                                log, or retain any inputs or outputs from the AI Playground.
                             </li>
                             <li>
-                                Inputs are processed in real time and discarded after the
-                                response is returned.
+                                Inputs are processed in real time and discarded immediately
+                                after the response is generated.
                             </li>
                             <li>
-                                Google&apos;s handling of data sent through the Gemini API is
-                                governed by{' '}
-                                <a
-                                    href="https://policies.google.com/privacy"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-monkey-orange hover:text-monkey-orange-light underline underline-offset-2 transition-colors"
-                                >
-                                    Google&apos;s Privacy Policy
-                                </a>
-                                .
+                                Your data never leaves our infrastructure — it is{' '}
+                                <strong className="text-white">not</strong> sent to any
+                                external AI provider.
                             </li>
                         </ul>
 
@@ -215,8 +209,8 @@ export default function PrivacyPolicyPage() {
                         </h3>
                         <p>
                             We do <strong className="text-white">not</strong> use your AI
-                            Playground inputs to train any machine learning models. The
-                            feature is provided as a demonstration tool only.
+                            Playground inputs to train, fine-tune, or improve any AI models.
+                            The feature is provided as a demonstration tool only.
                         </p>
                     </section>
 
@@ -244,7 +238,7 @@ export default function PrivacyPolicyPage() {
                             5. Data Sharing &amp; Third Parties
                         </h2>
                         <p className="mb-4">
-                            We share data only with the following third-party services,
+                            We share data only with the following third-party service,
                             strictly for the purposes described above:
                         </p>
                         <ul className="list-disc list-inside space-y-2 text-dark-300 mb-4">
@@ -253,12 +247,13 @@ export default function PrivacyPolicyPage() {
                                 anonymized website usage data (only when you consent to
                                 cookies).
                             </li>
-                            <li>
-                                <strong className="text-white">Google Gemini API</strong> —
-                                text inputs you submit to the AI Playground (processed in real
-                                time, not stored).
-                            </li>
                         </ul>
+                        <p className="mb-4">
+                            The AI Playground runs entirely on our own self-hosted models
+                            (DeepSeek and Llama 3.1). Your AI inputs are{' '}
+                            <strong className="text-white">not</strong> sent to any
+                            third-party service.
+                        </p>
                         <p>
                             We do not sell, rent, or trade your data to any third parties.
                         </p>
